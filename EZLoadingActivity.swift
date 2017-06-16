@@ -15,8 +15,11 @@ public struct EZLoadingActivity {
     //==========================================================================================================
     public struct Settings {
         public static var BackgroundColor = UIColor(red: 227/255, green: 232/255, blue: 235/255, alpha: 1.0)
+        public static var BackgroundColorWithBlurEffect = UIColor.clear
         public static var ActivityColor = UIColor(red: 0/255, green: 0/255, blue: 0/255, alpha: 1.0)
         public static var TextColor = UIColor(red: 80/255, green: 80/255, blue: 80/255, alpha: 1.0)
+        public static var TextColorWithBlurEffect = UIColor.white
+        public static var ActivityColorWithBlurEffect =  UIColor.white
         public static var FontName = "HelveticaNeue-Light"
         // Other possible stuff: ✓ ✓ ✔︎ ✕ ✖︎ ✘
         public static var SuccessIcon = "✔︎"
@@ -25,10 +28,7 @@ public struct EZLoadingActivity {
         public static var FailText = "Failure"
         public static var SuccessColor = UIColor(red: 68/255, green: 118/255, blue: 4/255, alpha: 1.0)
         public static var FailColor = UIColor(red: 255/255, green: 75/255, blue: 56/255, alpha: 1.0)
-        public static var ActivityWidth = UIScreen.ScreenWidth / Settings.WidthDivision
-        public static var ActivityHeight = ActivityWidth / 3
-        public static var ShadowEnabled = true
-        public static var WidthDivision: CGFloat {
+        static var WidthDivision: CGFloat {
             get {
                 if UIDevice.current.userInterfaceIdiom == UIUserInterfaceIdiom.pad {
                     return  3.5
@@ -37,16 +37,12 @@ public struct EZLoadingActivity {
                 }
             }
         }
-        public static var LoadOverApplicationWindow = false
-        public static var DarkensBackground = false
     }
     
     fileprivate static var instance: LoadingActivity?
     fileprivate static var hidingInProgress = false
-    fileprivate static var overlay: UIView!
     
     /// Disable UI stops users touch actions until EZLoadingActivity is hidden. Return success status
-    @discardableResult
     public static func show(_ text: String, disableUI: Bool) -> Bool {
         guard instance == nil else {
             print("EZLoadingActivity: You still have an active activity, please stop that before creating a new one")
@@ -57,46 +53,41 @@ public struct EZLoadingActivity {
             print("EZLoadingActivity Error: You don't have any views set. You may be calling them in viewDidLoad. Try viewDidAppear instead.")
             return false
         }
-        // Separate creation from showing
+        
         instance = LoadingActivity(text: text, disableUI: disableUI)
-        DispatchQueue.main.async {
-            if Settings.DarkensBackground {
-                if overlay == nil {
-                    overlay = UIView(frame: UIApplication.shared.keyWindow!.frame)
-                }
-                overlay.backgroundColor = UIColor.black.withAlphaComponent(0)
-                topMostController?.view.addSubview(overlay)
-                UIView.animate(withDuration: 0.2, animations: {overlay.backgroundColor = overlay.backgroundColor?.withAlphaComponent(0.5)})
-            }
-            instance?.showLoadingActivity()
-        }
         return true
     }
-    @discardableResult
-    public static func showWithDelay(_ text: String, disableUI: Bool, seconds: Double) -> Bool {
-        let showValue = show(text, disableUI: disableUI)
-        delay(seconds) { () -> () in
-            _ = hide(true, animated: false)
-        }
-        return showValue
-    }
     
-    public static func showOnController(_ text: String, disableUI: Bool, controller:UIViewController) -> Bool{
+    public static func show(_ text: String, disableUI: Bool,blurBackground:Bool,topPadding:Bool) -> Bool {
         guard instance == nil else {
             print("EZLoadingActivity: You still have an active activity, please stop that before creating a new one")
             return false
         }
-        instance = LoadingActivity(text: text, disableUI: disableUI)
-        DispatchQueue.main.async {
-            instance?.showLoadingWithController(controller)
+        
+        guard topMostController != nil else {
+            print("EZLoadingActivity Error: You don't have any views set. You may be calling them in viewDidLoad. Try viewDidAppear instead.")
+            return false
+        }
+        if(blurBackground){
+            instance = LoadingActivity(text: text, disableUI: disableUI, blurBackground:blurBackground, topPadding:topPadding)
+        }
+        else{
+            instance = LoadingActivity(text: text, disableUI: disableUI)
         }
         
         return true
     }
     
+    public static func showWithDelay(_ text: String, disableUI: Bool, seconds: Double) -> Bool {
+        let showValue = show(text, disableUI: disableUI)
+        delay(seconds) { () -> () in
+            _ = hide(success: true, animated: false)
+        }
+        return showValue
+    }
+    
     /// Returns success status
-    @discardableResult
-    public static func hide(_ success: Bool? = nil, animated: Bool = false) -> Bool {
+    public static func hide(success: Bool? = nil, animated: Bool = false) -> Bool {
         guard instance != nil else {
             print("EZLoadingActivity: You don't have an activity instance")
             return false
@@ -109,18 +100,10 @@ public struct EZLoadingActivity {
         
         if !Thread.current.isMainThread {
             DispatchQueue.main.async {
-                instance?.hideLoadingActivity(success, animated: animated)
+                instance?.hideLoadingActivity(success: success, animated: animated)
             }
         } else {
-            instance?.hideLoadingActivity(success, animated: animated)
-        }
-        
-        if overlay != nil {
-            UIView.animate(withDuration: 0.2, animations: {
-                overlay.backgroundColor = overlay.backgroundColor?.withAlphaComponent(0)
-                }, completion: { _ in
-                    overlay.removeFromSuperview()
-            })
+            instance?.hideLoadingActivity(success: success, animated: animated)
         }
         
         return true
@@ -137,17 +120,16 @@ public struct EZLoadingActivity {
         var activityView: UIActivityIndicatorView!
         var icon: UILabel!
         var UIDisabled = false
+        var blurBackground = false
         
         convenience init(text: String, disableUI: Bool) {
-            self.init(frame: CGRect(x: 0, y: 0, width: Settings.ActivityWidth, height: Settings.ActivityHeight))
-            center = CGPoint(x: topMostController!.view.bounds.midX, y: topMostController!.view.bounds.midY)
-            autoresizingMask = [.flexibleTopMargin, .flexibleLeftMargin, .flexibleBottomMargin, .flexibleRightMargin]
+            let width = UIScreen.ScreenWidth / Settings.WidthDivision
+            let height = width / 3
+            self.init(frame: CGRect(x: UIScreen.ScreenWidth/2 - width/2, y: UIScreen.ScreenHeight/2 - height/2, width: width, height: height))
             backgroundColor = Settings.BackgroundColor
             alpha = 1
             layer.cornerRadius = 8
-            if Settings.ShadowEnabled {
-                createShadow()
-            }
+            createShadow()
             
             let yPosition = frame.height/2 - 20
             
@@ -156,7 +138,8 @@ public struct EZLoadingActivity {
             activityView.color = Settings.ActivityColor
             activityView.startAnimating()
             
-            textLabel = UILabel(frame: CGRect(x: 60, y: yPosition, width: Settings.ActivityWidth - 70, height: 40))
+            
+            textLabel = UILabel(frame: CGRect(x: 60, y: yPosition, width: width - 70, height: 40))
             textLabel.textColor = Settings.TextColor
             textLabel.font = UIFont(name: Settings.FontName, size: 30)
             textLabel.adjustsFontSizeToFitWidth = true
@@ -164,41 +147,62 @@ public struct EZLoadingActivity {
             textLabel.textAlignment = NSTextAlignment.center
             textLabel.text = text
             
+            addSubview(activityView)
+            addSubview(textLabel)
+            
+            topMostController!.view.addSubview(self)
+            
             if disableUI {
                 UIApplication.shared.beginIgnoringInteractionEvents()
                 UIDisabled = true
             }
         }
         
-        func showLoadingActivity() {
-            addSubview(activityView)
-            addSubview(textLabel)
+        convenience init(text: String, disableUI: Bool,blurBackground:Bool,topPadding:Bool) {
             
-            //make it smoothly
-            self.alpha = 0
             
-            if Settings.LoadOverApplicationWindow {
-                UIApplication.shared.windows.first?.addSubview(self)
-            } else {
-                topMostController!.view.addSubview(self)
+            let width = UIScreen.ScreenWidth / Settings.WidthDivision
+            _ = width / 3
+            var yPositionForView:CGFloat =  0
+            if(topPadding){yPositionForView = 64}
+            
+            self.init(frame: CGRect(x: 0, y: yPositionForView, width: UIScreen.ScreenWidth, height: UIScreen.ScreenHeight))
+            backgroundColor = Settings.BackgroundColorWithBlurEffect
+            
+            let blurEffect = UIBlurEffect(style: UIBlurEffectStyle.dark)
+            let blurEffectView:UIVisualEffectView = UIVisualEffectView(effect: blurEffect)
+            blurEffectView.frame = self.bounds
+            blurEffectView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+            blurEffectView.alpha = 0.8
+            
+            var yPosition:CGFloat = frame.height/2 - 20
+            let xPosition = frame.width/2 - 85
+            
+            if(topPadding){yPosition -= 64}
+            
+            activityView = UIActivityIndicatorView(activityIndicatorStyle: UIActivityIndicatorViewStyle.whiteLarge)
+            activityView.frame = CGRect(x: xPosition, y: yPosition, width: 40, height: 40)
+            activityView.color = Settings.ActivityColorWithBlurEffect
+            activityView.startAnimating()
+            
+            textLabel = UILabel(frame: CGRect(x: xPosition+50, y: yPosition, width: width - 70, height: 40))
+            textLabel.textColor = Settings.TextColorWithBlurEffect
+            textLabel.font = UIFont(name: Settings.FontName, size: 30)
+            textLabel.adjustsFontSizeToFitWidth = true
+            textLabel.minimumScaleFactor = 0.25
+            textLabel.textAlignment = NSTextAlignment.center
+            textLabel.text = text
+            
+            blurEffectView.addSubview(textLabel)
+            blurEffectView.addSubview(activityView)
+            addSubview(blurEffectView)
+            
+            topMostController!.view.addSubview(self)
+            
+            if disableUI {
+                UIApplication.shared.beginIgnoringInteractionEvents()
+                UIDisabled = true
             }
-            
-            //make it smoothly
-            UIView.animate(withDuration: 0.2, animations: {
-                self.alpha = 1
-            })
-        }
-        
-        func showLoadingWithController(_ controller:UIViewController){
-            addSubview(activityView)
-            addSubview(textLabel)
-            
-            //make it smoothly
-            self.alpha = 0
-            controller.view.addSubview(self)
-            UIView.animate(withDuration: 0.2, animations: {
-                self.alpha = 1
-            })
         }
         
         func createShadow() {
@@ -220,7 +224,7 @@ public struct EZLoadingActivity {
             return myBezier
         }
         
-        func hideLoadingActivity(_ success: Bool?, animated: Bool) {
+        func hideLoadingActivity(success: Bool?, animated: Bool) {
             hidingInProgress = true
             if UIDisabled {
                 UIApplication.shared.endIgnoringInteractionEvents()
@@ -262,14 +266,10 @@ public struct EZLoadingActivity {
                 activityView.stopAnimating()
                 UIView.animate(withDuration: animationDuration, animations: {
                     self.icon.alpha = 1
-                    }, completion: { (value: Bool) in
-                        UIView.animate(withDuration: 0.2, animations: {
-                            self.alpha = 0
-                            }, completion: { (success) in
-                                self.callSelectorAsync(#selector(UIView.removeFromSuperview), delay: animationDuration)
-                        })
-                        instance = nil
-                        hidingInProgress = false
+                }, completion: { (value: Bool) in
+                    self.callSelectorAsync(#selector(UIView.removeFromSuperview), delay: animationDuration)
+                    instance = nil
+                    hidingInProgress = false
                 })
             } else {
                 activityView.stopAnimating()
